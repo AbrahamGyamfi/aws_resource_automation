@@ -129,3 +129,30 @@ Safely deletes all resources tagged with `Project=AutomationLab` after user conf
 - **S3:** Storage costs apply after free tier limits
 - **Data Transfer:** Outbound data transfer charges may apply
 - **Recommendation:** Always run cleanup script to avoid ongoing charges
+
+## 📂 Actual Repository Structure
+
+```
+aws_resource_automation/
+├── common_functions.sh           # Shared utility functions (104 lines)
+├── create_ec2.sh                 # EC2 instance automation (99 lines)
+├── create_security_group.sh      # Security group automation (109 lines)
+├── create_s3_bucket.sh           # S3 bucket automation (117 lines)
+├── cleanup_resources.sh          # Resource cleanup automation (108 lines)
+├── welcome.txt                   # Sample file for S3 upload
+├── README.md                     # Project documentation
+└── logs/                         # Directory for execution logs
+```
+
+### Key Components
+
+**Core Scripts:**
+- **common_functions.sh**: Provides reusable utility functions including logging, error handling, AWS CLI validation, and region selection
+- **create_ec2.sh**: Handles EC2 instance provisioning with AMI lookup, key pair management, and VPC configuration
+- **create_security_group.sh**: Manages security group creation with ingress rules and project tagging
+- **create_s3_bucket.sh**: Automates S3 bucket creation with versioning, tagging, and sample file uploads
+- **cleanup_resources.sh**: Safely removes all project resources with multi-region support and user confirmation
+
+**Supporting Files:**
+- **welcome.txt**: Auto-generated sample file demonstrating S3 upload capabilities
+- **logs/**: Contains timestamped execution logs for all script runs
