@@ -1,0 +1,18 @@
+Welcome to DevOps Automation Lab!
+==================================
+
+This file was automatically uploaded by create_s3_bucket.sh script.
+
+Bucket: devops-automation-lab-1766144591-6023
+Region: eu-west-1
+Created: Fri Dec 19 11:43:15 AM GMT 2025
+
+Project: AWS Resource Automation
+Purpose: Learning AWS CLI and Bash scripting
+
+---
+This is a demonstration file showing:
+- Automated S3 bucket creation
+- File upload capabilities
+- Versioning management
+- Tagging and organization
