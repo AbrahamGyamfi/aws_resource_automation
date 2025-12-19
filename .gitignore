@@ -1,0 +1,20 @@
+# AWS Private Keys - NEVER COMMIT
+*.pem
+
+# AWS Credentials
+.aws/
+credentials
+config
+
+# Log Files
+*.log
+logs/*.log
+
+# Temporary Files
+*.tmp
+*.swp
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
