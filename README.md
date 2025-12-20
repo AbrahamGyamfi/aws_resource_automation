@@ -11,7 +11,6 @@ automate_script/
 ├── create_security_group.sh   # Security group automation
 ├── create_s3_bucket.sh        # S3 bucket automation
 ├── cleanup_resources.sh       # Resource cleanup automation
-├── logs/                      # Execution logs
 └── screenshots/               # Execution screenshots
 ```
 
