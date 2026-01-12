@@ -21,6 +21,8 @@ LOG_DIR="./logs"
 LOG_FILE="${LOG_DIR}/sg_creation_$(date +%Y%m%d_%H%M%S).log"
 SG_NAME="devops-sg-$(date +%s)"
 SG_DESCRIPTION="Security group for DevOps automation lab"
+SCRIPT_ID_FILE=".script_session_id"
+SCRIPT_SESSION_ID=""
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -83,6 +85,7 @@ tag_security_group() {
                Key=Project,Value=AutomationLab \
                Key=Environment,Value=Development \
                Key=ManagedBy,Value=BashScript \
+               Key=ScriptManaged,Value="$SCRIPT_SESSION_ID" \
         --region "$REGION" 2>> "$LOG_FILE"
     
     print_success "Tags applied to security group"
@@ -160,6 +163,7 @@ main() {
     
     # Initialize
     init_logging
+    init_script_session
     print_header "Security Group Creation Script"
     
     # Validate and setup

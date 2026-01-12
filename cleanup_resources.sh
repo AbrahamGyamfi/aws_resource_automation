@@ -21,6 +21,8 @@ SCRIPT_NAME="cleanup_resources.sh"
 LOG_DIR="./logs"
 LOG_FILE="${LOG_DIR}/cleanup_$(date +%Y%m%d_%H%M%S).log"
 PROJECT_TAG="AutomationLab"
+SCRIPT_ID_FILE=".script_session_id"
+SCRIPT_MANAGED_TAG="ScriptManaged"
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -87,18 +89,39 @@ verify_credentials() {
 confirm_cleanup() {
     print_header "WARNING: Resource Cleanup"
     
-    cat <<EOF
-This script will DELETE the following resources tagged with Project=$PROJECT_TAG:
+    if [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+        cat <<EOF
+This script will DELETE the following resources:
+  Filter 1: Project=$PROJECT_TAG
+  Filter 2: $SCRIPT_MANAGED_TAG=$SCRIPT_SESSION_ID
+  
+  Resources:
+    - EC2 instances
+    - EC2 key pairs
+    - Security groups
+    - S3 buckets (and all contents)
+    - Local files (*.pem, welcome.txt)
+
+Region(s): $REGION
+
+⚠ ONLY resources created by THIS script session will be deleted! ⚠
+⚠ THIS ACTION CANNOT BE UNDONE! ⚠
+EOF
+    else
+        cat <<EOF
+This script will DELETE ALL resources tagged with Project=$PROJECT_TAG:
   - EC2 instances
-  - EC2 key pairs
+  - EC2 key pairs  
   - Security groups
   - S3 buckets (and all contents)
   - Local files (*.pem, welcome.txt)
 
 Region(s): $REGION
 
+⚠ WARNING: This will delete ALL resources with the Project tag! ⚠
 ⚠ THIS ACTION CANNOT BE UNDONE! ⚠
 EOF
+    fi
     
     echo ""
     read -p "Are you absolutely sure you want to continue? (type 'yes' to confirm): " CONFIRM
@@ -119,10 +142,15 @@ terminate_instances() {
     
     log "INFO" "Checking for EC2 instances in $region"
     
+    # Build filter based on whether we have a specific session ID
+    local filters="Name=tag:Project,Values=$PROJECT_TAG Name=instance-state-name,Values=running,stopped,stopping,pending"
+    if [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+        filters="$filters Name=tag:$SCRIPT_MANAGED_TAG,Values=$SCRIPT_SESSION_ID"
+    fi
+    
     local instance_ids=$(aws ec2 describe-instances \
         --region "$region" \
-        --filters "Name=tag:Project,Values=$PROJECT_TAG" \
-                  "Name=instance-state-name,Values=running,stopped,stopping,pending" \
+        --filters $filters \
         --query 'Reservations[*].Instances[*].InstanceId' \
         --output text 2>> "$LOG_FILE" || echo "")
     
@@ -190,9 +218,15 @@ delete_security_groups() {
     # Wait a bit to ensure instances are fully terminated
     sleep 5
     
+    # Build filter based on whether we have a specific session ID
+    local filters="Name=tag:Project,Values=$PROJECT_TAG"
+    if [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+        filters="$filters Name=tag:$SCRIPT_MANAGED_TAG,Values=$SCRIPT_SESSION_ID"
+    fi
+    
     local sg_ids=$(aws ec2 describe-security-groups \
         --region "$region" \
-        --filters "Name=tag:Project,Values=$PROJECT_TAG" \
+        --filters $filters \
         --query 'SecurityGroups[*].GroupId' \
         --output text 2>> "$LOG_FILE" || echo "")
     
@@ -243,11 +277,22 @@ delete_s3_buckets() {
             continue
         fi
         
-        # Verify it has the right tags or name pattern
-        local has_project_tag=$(aws s3api get-bucket-tagging \
-            --bucket "$bucket" 2>> "$LOG_FILE" | grep -o "$PROJECT_TAG" || echo "")
+        # Verify it has the right tags
+        local bucket_tags=$(aws s3api get-bucket-tagging \
+            --bucket "$bucket" 2>> "$LOG_FILE" || echo "")
         
-        if [ -n "$has_project_tag" ] || [[ "$bucket" == devops-automation-lab* ]]; then
+        local has_project_tag=$(echo "$bucket_tags" | grep -o "$PROJECT_TAG" || echo "")
+        
+        # If we have a specific session ID, also check for ScriptManaged tag
+        local is_script_managed=true
+        if [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+            local has_script_tag=$(echo "$bucket_tags" | grep -o "$SCRIPT_SESSION_ID" || echo "")
+            if [ -z "$has_script_tag" ]; then
+                is_script_managed=false
+            fi
+        fi
+        
+        if [ -n "$has_project_tag" ] && [ "$is_script_managed" == "true" ]; then
             print_info "  Emptying bucket: $bucket"
             
             # Delete all versions
@@ -353,6 +398,7 @@ main() {
     
     # Validate and setup
     validate_aws_cli
+    get_script_session_id
     get_region
     get_regions_list
     verify_credentials

@@ -22,6 +22,8 @@ LOG_FILE="${LOG_DIR}/ec2_creation_$(date +%Y%m%d_%H%M%S).log"
 INSTANCE_TYPE="t3.micro"
 KEY_NAME="devops-keypair-$(date +%s)"
 INSTANCE_NAME="AutomationLab-EC2"
+SCRIPT_ID_FILE=".script_session_id"
+SCRIPT_SESSION_ID=""
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -114,7 +116,7 @@ launch_instance() {
         --key-name "$KEY_NAME" \
         --security-group-ids "$SECURITY_GROUP" \
         --region "$REGION" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME},{Key=Project,Value=AutomationLab},{Key=Environment,Value=Development},{Key=ManagedBy,Value=BashScript}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME},{Key=Project,Value=AutomationLab},{Key=Environment,Value=Development},{Key=ManagedBy,Value=BashScript},{Key=ScriptManaged,Value=$SCRIPT_SESSION_ID}]" \
         --query 'Instances[0].InstanceId' \
         --output text 2>> "$LOG_FILE")
     
@@ -205,6 +207,7 @@ main() {
     
     # Initialize
     init_logging
+    init_script_session
     print_header "EC2 Instance Creation Script"
     
     # Validate and setup

@@ -102,3 +102,54 @@ get_region() {
     print_info "Selected region: $REGION"
     export REGION
 }
+
+# ===========================
+# SCRIPT SESSION MANAGEMENT
+# ===========================
+
+# Initialize script session ID
+# This creates or reuses a session ID that uniquely identifies resources
+# created by your scripts, enabling safe cleanup that won't affect
+# developer-created resources
+init_script_session() {
+    local script_id_file="${SCRIPT_ID_FILE:-.script_session_id}"
+    
+    if [ -f "$script_id_file" ]; then
+        SCRIPT_SESSION_ID=$(cat "$script_id_file")
+        log "INFO" "Using existing script session ID: $SCRIPT_SESSION_ID"
+        print_info "Using existing session ID: $SCRIPT_SESSION_ID"
+    else
+        SCRIPT_SESSION_ID="automation-$(date +%Y%m%d-%H%M%S)-$$"
+        echo "$SCRIPT_SESSION_ID" > "$script_id_file"
+        log "INFO" "Created new script session ID: $SCRIPT_SESSION_ID"
+        print_success "Created new session ID: $SCRIPT_SESSION_ID"
+    fi
+    
+    export SCRIPT_SESSION_ID
+}
+
+# Get script session ID for cleanup operations
+# Returns the session ID from file, or prompts user if file doesn't exist
+get_script_session_id() {
+    local script_id_file="${SCRIPT_ID_FILE:-.script_session_id}"
+    
+    if [ -f "$script_id_file" ]; then
+        SCRIPT_SESSION_ID=$(cat "$script_id_file")
+        log "INFO" "Found script session ID: $SCRIPT_SESSION_ID"
+        print_success "Script session ID loaded: $SCRIPT_SESSION_ID"
+    else
+        print_warning "No script session ID file found ($script_id_file)"
+        print_warning "This file is created when you run create scripts"
+        echo ""
+        read -p "Do you want to clean ALL resources with Project=${PROJECT_TAG}? (yes/no): " cleanup_all
+        if [ "$cleanup_all" == "yes" ]; then
+            SCRIPT_SESSION_ID="ALL"
+            log "INFO" "User chose to clean all resources with Project tag"
+        else
+            print_error "Cleanup cancelled. No session ID available."
+            exit 1
+        fi
+    fi
+    
+    export SCRIPT_SESSION_ID
+}

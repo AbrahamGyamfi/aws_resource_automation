@@ -6,6 +6,9 @@
 credentials
 config
 
+# Script Session Management
+.script_session_id
+
 # Log Files
 *.log
 logs/*.log

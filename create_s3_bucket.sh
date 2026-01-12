@@ -21,10 +21,13 @@ LOG_DIR="./logs"
 LOG_FILE="${LOG_DIR}/s3_creation_$(date +%Y%m%d_%H%M%S).log"
 BUCKET_NAME="devops-automation-lab-$(date +%s)-$RANDOM"
 SAMPLE_FILE="welcome.txt"
+SCRIPT_ID_FILE=".script_session_id"
+SCRIPT_SESSION_ID=""
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
 # ===========================
+
 
 # Verify AWS credentials
 verify_credentials() {
@@ -98,6 +101,7 @@ tag_bucket() {
             {Key=Project,Value=AutomationLab},
             {Key=Environment,Value=Development},
             {Key=ManagedBy,Value=BashScript},
+            {Key=ScriptManaged,Value=$SCRIPT_SESSION_ID},
             {Key=CreatedBy,Value=$USER}
         ]" \
         --region "$REGION" 2>> "$LOG_FILE"
@@ -235,6 +239,7 @@ main() {
     
     # Initialize
     init_logging
+    init_script_session
     print_header "S3 Bucket Creation Script"
     
     # Validate and setup
