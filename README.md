@@ -103,7 +103,12 @@ Safely deletes resources using two-level filtering (`Project=AutomationLab` + `S
 **Screenshots:** See [screenshots/](screenshots/) directory for execution examples
 
 **Logs:** All executions logged to `./logs/` directory with timestamps
-
+ ! [rejected]        main -> main (non-fast-forward)
+error: failed to push some refs to 'github.com:AbrahamGyamfi/aws_resource_automation.git'
+hint: Updates were rejected because the tip of your current branch is behind
+hint: its remote counterpart. If you want to integrate the remote changes,
+hint: use 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
 
 ## 🛠️ Troubleshooting
 
