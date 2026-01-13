@@ -182,10 +182,20 @@ delete_key_pairs() {
     
     log "INFO" "Checking for key pairs in $region"
     
-    local key_pairs=$(aws ec2 describe-key-pairs \
+    # Try to get key pairs from tracking file first
+    local tracked_keys=""
+    if [ -f "$TRACKING_FILE" ] && [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+        tracked_keys=$(get_resources_from_tracking "$SCRIPT_SESSION_ID" "key_pair" 2>/dev/null || echo "")
+    fi
+    
+    # Also query AWS for key pairs
+    local aws_keys=$(aws ec2 describe-key-pairs \
         --region "$region" \
         --query 'KeyPairs[?starts_with(KeyName, `devops-keypair`)].KeyName' \
         --output text 2>> "$LOG_FILE" || echo "")
+    
+    # Combine both sources
+    local key_pairs=$(echo -e "${tracked_keys}\n${aws_keys}" | sort -u | grep -v '^$')
     
     if [ -z "$key_pairs" ]; then
         print_info "  No key pairs found in $region"
@@ -300,8 +310,9 @@ delete_s3_buckets() {
                 --bucket "$bucket" \
                 --output json \
                 --query 'Versions[].{Key:Key,VersionId:VersionId}' 2>> "$LOG_FILE" | \
-            jq -c '.[]' 2>> "$LOG_FILE" | \
+            jq -c '.[]?' 2>> "$LOG_FILE" | \
             while read -r obj; do
+                [ -z "$obj" ] && continue
                 local key=$(echo "$obj" | jq -r '.Key')
                 local version=$(echo "$obj" | jq -r '.VersionId')
                 aws s3api delete-object \
@@ -315,8 +326,9 @@ delete_s3_buckets() {
                 --bucket "$bucket" \
                 --output json \
                 --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' 2>> "$LOG_FILE" | \
-            jq -c '.[]' 2>> "$LOG_FILE" | \
+            jq -c '.[]?' 2>> "$LOG_FILE" | \
             while read -r obj; do
+                [ -z "$obj" ] && continue
                 local key=$(echo "$obj" | jq -r '.Key')
                 local version=$(echo "$obj" | jq -r '.VersionId')
                 aws s3api delete-object \
@@ -325,18 +337,88 @@ delete_s3_buckets() {
                     --version-id "$version" >> "$LOG_FILE" 2>&1 || true
             done
             
-            # Fallback: force delete with s3 rb
-            aws s3 rb "s3://$bucket" --force >> "$LOG_FILE" 2>&1 || true
+            # Fallback: force empty with s3 rb then delete
+            aws s3 rb "s3://$bucket" --force >> "$LOG_FILE" 2>&1
             
-            # Delete the bucket
-            if aws s3api delete-bucket \
-                --bucket "$bucket" 2>> "$LOG_FILE"; then
+            # Verify bucket is deleted
+            if ! aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
                 print_success "  Deleted bucket: $bucket"
             else
                 print_warning "  Could not delete bucket: $bucket"
             fi
         fi
     done
+}
+
+# Clean up tracking infrastructure (S3 bucket and local file)
+cleanup_tracking_infrastructure() {
+    log "INFO" "Cleaning up tracking infrastructure"
+    
+    # Get AWS account ID for bucket name
+    local account_id=$(aws sts get-caller-identity --query Account --output text 2>&1 | grep -E '^[0-9]{12}$' || echo "")
+    
+    if [ -z "$account_id" ]; then
+        print_warning "  Could not determine AWS account ID, skipping tracking bucket cleanup"
+        return
+    fi
+    
+    local tracking_bucket="script-tracking-backup-${account_id}"
+    
+    # Check if tracking bucket exists
+    if aws s3api head-bucket --bucket "$tracking_bucket" 2>> "$LOG_FILE"; then
+        print_info "  Emptying tracking bucket: $tracking_bucket"
+        
+        # Delete all versions
+        aws s3api list-object-versions \
+            --bucket "$tracking_bucket" \
+            --output json \
+            --query 'Versions[].{Key:Key,VersionId:VersionId}' 2>> "$LOG_FILE" | \
+        jq -c '.[]?' 2>> "$LOG_FILE" | \
+        while read -r obj; do
+            [ -z "$obj" ] && continue
+            local key=$(echo "$obj" | jq -r '.Key')
+            local version=$(echo "$obj" | jq -r '.VersionId')
+            aws s3api delete-object \
+                --bucket "$tracking_bucket" \
+                --key "$key" \
+                --version-id "$version" >> "$LOG_FILE" 2>&1 || true
+        done
+        
+        # Delete all delete markers
+        aws s3api list-object-versions \
+            --bucket "$tracking_bucket" \
+            --output json \
+            --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' 2>> "$LOG_FILE" | \
+        jq -c '.[]?' 2>> "$LOG_FILE" | \
+        while read -r obj; do
+            [ -z "$obj" ] && continue
+            local key=$(echo "$obj" | jq -r '.Key')
+            local version=$(echo "$obj" | jq -r '.VersionId')
+            aws s3api delete-object \
+                --bucket "$tracking_bucket" \
+                --key "$key" \
+                --version-id "$version" >> "$LOG_FILE" 2>&1 || true
+        done
+        
+        # Fallback: force empty with s3 rb then delete
+        aws s3 rb "s3://$tracking_bucket" --force >> "$LOG_FILE" 2>&1
+        
+        # Verify bucket is deleted
+        if ! aws s3api head-bucket --bucket "$tracking_bucket" 2>/dev/null; then
+            print_success "  Deleted tracking bucket: $tracking_bucket"
+        else
+            print_warning "  Could not delete tracking bucket: $tracking_bucket"
+        fi
+    else
+        print_info "  Tracking bucket does not exist"
+    fi
+    
+    # Remove local tracking file (need to change permissions first)
+    if [ -f "$TRACKING_FILE" ]; then
+        chmod 644 "$TRACKING_FILE" 2>> "$LOG_FILE" || true
+        rm -f "$TRACKING_FILE"
+        print_success "  Removed local tracking file: $TRACKING_FILE"
+    fi
 }
 
 # Clean up local files
@@ -378,6 +460,7 @@ Summary of cleanup actions:
   ✓ Key pairs deleted
   ✓ Security groups removed
   ✓ S3 buckets emptied and deleted
+  ✓ Tracking infrastructure cleaned (S3 bucket and local file)
   ✓ Local files cleaned up
 
 Region(s) cleaned: $REGION
@@ -422,12 +505,17 @@ main() {
     
     # S3 buckets (region-aware but handled separately)
     print_header "Cleaning S3 Buckets"
-    print_info "[4/4] Deleting S3 buckets..."
+    print_info "[4/5] Deleting S3 buckets..."
     delete_s3_buckets
+    
+    # Tracking infrastructure cleanup
+    print_header "Tracking Infrastructure"
+    print_info "[5/5] Cleaning up tracking bucket and local file..."
+    cleanup_tracking_infrastructure
     
     # Local cleanup
     print_header "Local Cleanup"
-    print_info "[5/5] Cleaning up local files..."
+    print_info "[6/6] Cleaning up local files..."
     cleanup_local_files
     
     # Display summary

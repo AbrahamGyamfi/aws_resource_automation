@@ -85,6 +85,9 @@ create_bucket() {
     fi
     
     if [ $? -eq 0 ]; then
+        # Save to JSON tracking file
+        save_resource_to_tracking "s3_bucket" "$BUCKET_NAME" "$BUCKET_NAME" "$REGION"
+        
         print_success "Bucket created: $BUCKET_NAME"
     else
         print_error "Failed to create bucket"

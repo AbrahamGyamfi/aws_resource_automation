@@ -73,6 +73,10 @@ create_key_pair() {
         --output text > "${KEY_NAME}.pem" 2>> "$LOG_FILE"
     
     chmod 400 "${KEY_NAME}.pem"
+    
+    # Save to JSON tracking file
+    save_resource_to_tracking "key_pair" "$KEY_NAME" "$KEY_NAME" "$REGION"
+    
     print_success "Key pair created: ${KEY_NAME}.pem"
 }
 
@@ -123,6 +127,9 @@ launch_instance() {
     if [ -z "$INSTANCE_ID" ]; then
         print_error "Failed to launch instance"
     fi
+    
+    # Save to JSON tracking file
+    save_resource_to_tracking "ec2_instance" "$INSTANCE_ID" "$INSTANCE_NAME" "$REGION"
     
     print_success "Instance launched: $INSTANCE_ID"
 }

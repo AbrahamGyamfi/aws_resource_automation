@@ -72,6 +72,9 @@ create_security_group() {
         print_error "Failed to create security group"
     fi
     
+    # Save to JSON tracking file
+    save_resource_to_tracking "security_group" "$SG_ID" "$SG_NAME" "$REGION"
+    
     print_success "Security group created: $SG_ID"
 }
 
