@@ -5,10 +5,11 @@ Automated Bash scripts for creating and managing AWS resources (EC2, Security Gr
 ## ✨ Key Features
 
 - 🚀 **Automated Resource Creation**: EC2, S3, Security Groups with one command
-- 🔍 **Dry-Run Mode**: Preview changes before creating resources
+- 🔍 **Dry-Run Mode**: Preview changes before creating resources (all scripts)
 - 🔐 **S3-First State Management**: Primary state in S3 with local read-only cache
 - 🎯 **Session-Based Tracking**: Safe cleanup with unique session identifiers
 - 📊 **Comprehensive Logging**: Structured logs with aligned formatting
+- 🎨 **Color-Coded Output**: Professional colored console output (green success, red errors, yellow warnings, blue info, magenta dry-run)
 - 🛡️ **Safety Mechanisms**: Two-level filtering prevents accidental deletions
 - 🏗️ **Modular Architecture**: Clean separation of utility and state functions
 
@@ -57,7 +58,14 @@ chmod +x *.sh
 ### 🔧 common_functions.sh
 Central utility functions including:
 - **Logging**: Structured logs with aligned columns and timestamps
-- **Output Formatting**: Color-coded console messages with symbols (✓, ✗, ⚠)
+- **Output Formatting**: Professional color-coded console messages
+  - 🟢 Green: Success messages (✓)
+  - 🔴 Red: Error messages (✗)
+  - 🟡 Yellow: Warnings (⚠)
+  - 🔵 Blue: Info messages
+  - 🟣 Magenta: Dry-run messages
+  - 🔵 Cyan: Section headers
+  - Colors auto-disabled when piping to files (clean logs)
 - **AWS Validation**: Credential verification and region selection
 - **Error Handling**: Graceful error management with proper exit codes
 - **Sources**: state_functions.sh for state management
@@ -119,6 +127,10 @@ Creates security group with SSH and HTTP access.
 
 **Usage:**
 ```bash
+# Dry-run (preview without creating)
+./create_security_group.sh --dry-run
+
+# Create security group
 ./create_security_group.sh
 ```
 
@@ -127,6 +139,7 @@ Creates security group with SSH and HTTP access.
 - Adds ingress rules: SSH (port 22), HTTP (port 80)
 - Tags with session ID for safe cleanup
 - Tracks in state file and S3
+- Dry-run mode previews security group configuration
 
 ![Security Group Creation](screenshots/Sec_group_shot.png)
 
@@ -147,6 +160,10 @@ Creates S3 bucket with versioning and encryption.
 - Enables versioning and encryption
 - Uploads sample file (welcome.txt)
 - Applies lifecycle policies
+- Attempts to apply public read bucket policy
+  - **Note**: May fail if AWS account has Block Public Access enabled (security feature)
+  - Gracefully handles failure with warning message
+  - Bucket remains functional for authenticated access
 - Tags with session ID
 - Tracks in state file and S3
 
@@ -196,20 +213,25 @@ Safely deletes all script-created resources.
 # 2. Create EC2 instance
 ./create_ec2.sh
 
-# 3. Create S3 bucket (with dry-run first)
+# 3. Preview S3 bucket creation (dry-run)
 ./create_s3_bucket.sh --dry-run
+
+# 4. Create S3 bucket
 ./create_s3_bucket.sh
 
-# 4. Create security group
+# 5. Preview security group (dry-run)
+./create_security_group.sh --dry-run
+
+# 6. Create security group
 ./create_security_group.sh
 
-# 5. View current state
+# 7. View current state
 cat .resource_state.json | jq .
 
-# 6. Preview cleanup (dry-run)
+# 8. Preview cleanup (dry-run)
 ./cleanup_resources.sh --dry-run
 
-# 7. Cleanup everything
+# 9. Cleanup everything
 ./cleanup_resources.sh
 ```
 

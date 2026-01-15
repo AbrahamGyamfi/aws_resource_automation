@@ -23,6 +23,20 @@ SG_NAME="devops-sg-$(date +%s)"
 SG_DESCRIPTION="Security group for DevOps automation lab"
 SCRIPT_ID_FILE=".script_session_id"
 SCRIPT_SESSION_ID=""
+DRY_RUN=false
+
+# Parse command line arguments
+if [ $# -gt 0 ]; then
+    if [ "$1" == "--dry-run" ] || [ "$*" == "--dry run" ]; then
+        DRY_RUN=true
+        echo -e "${COLOR_MAGENTA}${COLOR_BOLD}🔍 DRY-RUN MODE: No resources will be created${COLOR_RESET}"
+        echo -e "${COLOR_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    else
+        echo -e "${COLOR_RED}Error: Invalid argument '$*'${COLOR_RESET}"
+        echo "Usage: $0 [--dry-run]"
+        exit 1
+    fi
+fi
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -60,6 +74,16 @@ get_vpc_id() {
 create_security_group() {
     log "INFO" "Creating security group: $SG_NAME"
     
+    if [ "$DRY_RUN" == "true" ]; then
+        print_info "[DRY-RUN] Would create security group:"
+        print_info "  Name: $SG_NAME"
+        print_info "  Description: $SG_DESCRIPTION"
+        print_info "  VPC: $VPC_ID"
+        print_info "  Region: $REGION"
+        SG_ID="sg-dryrun123456"
+        return
+    fi
+    
     SG_ID=$(aws ec2 create-security-group \
         --group-name "$SG_NAME" \
         --description "$SG_DESCRIPTION" \
@@ -82,6 +106,16 @@ create_security_group() {
 tag_security_group() {
     log "INFO" "Tagging security group"
     
+    if [ "$DRY_RUN" == "true" ]; then
+        print_info "[DRY-RUN] Would apply tags:"
+        print_info "  Name: $SG_NAME"
+        print_info "  Project: AutomationLab"
+        print_info "  Environment: Development"
+        print_info "  ManagedBy: BashScript"
+        print_info "  ScriptManaged: $SCRIPT_SESSION_ID"
+        return
+    fi
+    
     aws ec2 create-tags \
         --resources "$SG_ID" \
         --tags Key=Name,Value="$SG_NAME" \
@@ -102,6 +136,14 @@ add_ingress_rule() {
     
     log "INFO" "Adding ingress rule: $protocol/$port"
     
+    if [ "$DRY_RUN" == "true" ]; then
+        print_info "[DRY-RUN] Would add $description rule:"
+        print_info "  Protocol: $protocol"
+        print_info "  Port: $port"
+        print_info "  CIDR: 0.0.0.0/0"
+        return
+    fi
+    
     if aws ec2 authorize-security-group-ingress \
         --group-id "$SG_ID" \
         --protocol "$protocol" \
@@ -117,6 +159,23 @@ add_ingress_rule() {
 # Display security group rules
 display_rules() {
     log "INFO" "Retrieving security group rules"
+    
+    if [ "$DRY_RUN" == "true" ]; then
+        print_header "[DRY-RUN] Security Group Summary"
+        cat <<EOF
+Security Group Name: $SG_NAME
+VPC ID:              $VPC_ID
+Region:              $REGION
+
+Ingress Rules:
+  - SSH  (TCP/22)  from 0.0.0.0/0
+  - HTTP (TCP/80)  from 0.0.0.0/0
+==========================================
+
+ℹ️  No actual resources were created (dry-run mode)
+EOF
+        return
+    fi
     
     print_header "Security Group Created Successfully!"
     
@@ -166,7 +225,12 @@ main() {
     
     # Initialize
     init_logging
-    init_script_session
+    
+    # Only initialize session if not in dry-run mode
+    if [ "$DRY_RUN" != "true" ]; then
+        init_script_session
+    fi
+    
     print_header "Security Group Creation Script"
     
     # Validate and setup

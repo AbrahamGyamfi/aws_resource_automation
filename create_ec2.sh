@@ -24,10 +24,16 @@ SCRIPT_SESSION_ID=""
 DRY_RUN=false
 
 # Parse command line arguments
-if [ "${1:-}" == "--dry-run" ]; then
-    DRY_RUN=true
-    print_info "🔍 DRY-RUN MODE: No resources will be created"
-    log "INFO" "Script started in dry-run mode"
+if [ $# -gt 0 ]; then
+    if [ "$1" == "--dry-run" ] || [ "$*" == "--dry run" ]; then
+        DRY_RUN=true
+        echo -e "${COLOR_MAGENTA}${COLOR_BOLD}🔍 DRY-RUN MODE: No resources will be created${COLOR_RESET}"
+        echo -e "${COLOR_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    else
+        echo -e "${COLOR_RED}Error: Invalid argument '$*'${COLOR_RESET}"
+        echo "Usage: $0 [--dry-run]"
+        exit 1
+    fi
 fi
 
 # ===========================
@@ -275,7 +281,12 @@ main() {
     
     # Initialize
     init_logging
-    init_script_session
+    
+    # Only initialize session if not in dry-run mode
+    if [ "$DRY_RUN" != "true" ]; then
+        init_script_session
+    fi
+    
     print_header "EC2 Instance Creation Script"
     
     # Validate and setup

@@ -26,10 +26,16 @@ SCRIPT_MANAGED_TAG="ScriptManaged"
 DRY_RUN=false
 
 # Parse command line arguments
-if [ "${1:-}" == "--dry-run" ]; then
-    DRY_RUN=true
-    print_info "🔍 DRY-RUN MODE: No resources will be deleted"
-    log "INFO" "Cleanup script started in dry-run mode"
+if [ $# -gt 0 ]; then
+    if [ "$1" == "--dry-run" ] || [ "$*" == "--dry run" ]; then
+        DRY_RUN=true
+        echo -e "${COLOR_MAGENTA}${COLOR_BOLD}🔍 DRY-RUN MODE: No resources will be deleted${COLOR_RESET}"
+        echo -e "${COLOR_MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+    else
+        echo -e "${COLOR_RED}Error: Invalid argument '$*'${COLOR_RESET}"
+        echo "Usage: $0 [--dry-run]"
+        exit 1
+    fi
 fi
 
 # ===========================
@@ -112,9 +118,9 @@ This script will DELETE the following resources:
 
 Region(s): $REGION
 
-⚠ ONLY resources created by THIS script session will be deleted! ⚠
-⚠ THIS ACTION CANNOT BE UNDONE! ⚠
 EOF
+        echo -e "${COLOR_YELLOW}${COLOR_BOLD}⚠ ONLY resources created by THIS script session will be deleted! ⚠${COLOR_RESET}"
+        echo -e "${COLOR_RED}${COLOR_BOLD}⚠ THIS ACTION CANNOT BE UNDONE! ⚠${COLOR_RESET}"
     else
         cat <<EOF
 This script will DELETE ALL resources tagged with Project=$PROJECT_TAG:
@@ -126,9 +132,9 @@ This script will DELETE ALL resources tagged with Project=$PROJECT_TAG:
 
 Region(s): $REGION
 
-⚠ WARNING: This will delete ALL resources with the Project tag! ⚠
-⚠ THIS ACTION CANNOT BE UNDONE! ⚠
 EOF
+        echo -e "${COLOR_RED}${COLOR_BOLD}⚠ WARNING: This will delete ALL resources with the Project tag! ⚠${COLOR_RESET}"
+        echo -e "${COLOR_RED}${COLOR_BOLD}⚠ THIS ACTION CANNOT BE UNDONE! ⚠${COLOR_RESET}"
     fi
     
     echo ""

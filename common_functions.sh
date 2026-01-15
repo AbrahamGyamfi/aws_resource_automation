@@ -9,6 +9,34 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ===========================
+# COLOR CODES
+# ===========================
+# Check if terminal supports colors
+if [ -t 1 ]; then
+    COLOR_RESET="\033[0m"
+    COLOR_BOLD="\033[1m"
+    COLOR_RED="\033[1;31m"
+    COLOR_GREEN="\033[1;32m"
+    COLOR_YELLOW="\033[1;33m"
+    COLOR_BLUE="\033[1;34m"
+    COLOR_MAGENTA="\033[1;35m"
+    COLOR_CYAN="\033[1;36m"
+    COLOR_WHITE="\033[1;37m"
+    COLOR_GRAY="\033[0;90m"
+else
+    COLOR_RESET=""
+    COLOR_BOLD=""
+    COLOR_RED=""
+    COLOR_GREEN=""
+    COLOR_YELLOW=""
+    COLOR_BLUE=""
+    COLOR_MAGENTA=""
+    COLOR_CYAN=""
+    COLOR_WHITE=""
+    COLOR_GRAY=""
+fi
+
+# ===========================
 # LOGGING FUNCTIONS
 # ===========================
 
@@ -40,23 +68,23 @@ log() {
 print_header() {
     local title="$1"
     echo ""
-    echo "==========================================" | tee -a "$LOG_FILE"
-    echo "$title" | tee -a "$LOG_FILE"
-    echo "==========================================" | tee -a "$LOG_FILE"
+    echo -e "${COLOR_CYAN}${COLOR_BOLD}==========================================${COLOR_RESET}" | tee -a "$LOG_FILE"
+    echo -e "${COLOR_CYAN}${COLOR_BOLD}$title${COLOR_RESET}" | tee -a "$LOG_FILE"
+    echo -e "${COLOR_CYAN}${COLOR_BOLD}==========================================${COLOR_RESET}" | tee -a "$LOG_FILE"
     log "INFO" "--- $title ---"
 }
 
 # Print success message
 print_success() {
     local message="$1"
-    echo "✓ $message"
+    echo -e "${COLOR_GREEN}✓ $message${COLOR_RESET}"
     log "SUCCESS" "$message"
 }
 
 # Print error message and exit
 print_error() {
     local message="$1"
-    echo "✗ ERROR: $message" >&2
+    echo -e "${COLOR_RED}${COLOR_BOLD}✗ ERROR: $message${COLOR_RESET}" >&2
     log "ERROR" "$message"
     exit 1
 }
@@ -64,14 +92,19 @@ print_error() {
 # Print info message
 print_info() {
     local message="$1"
-    echo "$message"
+    # Check if this is a dry-run message
+    if [[ "$message" == *"[DRY-RUN]"* ]] || [[ "$message" == *"DRY-RUN MODE"* ]]; then
+        echo -e "${COLOR_MAGENTA}$message${COLOR_RESET}"
+    else
+        echo -e "${COLOR_BLUE}$message${COLOR_RESET}"
+    fi
     log "INFO" "$message"
 }
 
 # Print warning message
 print_warning() {
     local message="$1"
-    echo "⚠ WARNING: $message"
+    echo -e "${COLOR_YELLOW}⚠ WARNING: $message${COLOR_RESET}"
     log "WARNING" "$message"
 }
 
@@ -81,7 +114,7 @@ print_step() {
     local total_steps="$2"
     local description="$3"
     echo ""
-    echo "[$step_num/$total_steps] $description"
+    echo -e "${COLOR_WHITE}${COLOR_BOLD}[$step_num/$total_steps] $description${COLOR_RESET}"
     log "STEP" "[$step_num/$total_steps] $description"
 }
 

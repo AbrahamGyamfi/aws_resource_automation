@@ -36,7 +36,7 @@ EOF
 
 # Save resource ID to state system
 # Args: resource_type, resource_id, resource_name, region
-# PRIMARY: Saves to S3 first, then syncs to local read-only backup
+
 save_resource_to_state() {
     local resource_type="$1"
     local resource_id="$2"
