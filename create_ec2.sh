@@ -2,10 +2,6 @@
 
 # Script: create_ec2.sh
 # Purpose: Automate EC2 instance creation with logging and user input
-# Author: DevOps Automation Lab
-# Date: December 2025
-# Usage: ./create_ec2.sh [--dry-run]
-
 set -euo pipefail
 
 # Get the directory where the script is located

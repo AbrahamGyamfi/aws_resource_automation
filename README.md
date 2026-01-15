@@ -1,20 +1,30 @@
 # AWS Resource Automation with Bash Scripts
 
-Automated Bash scripts for creating and managing AWS resources (EC2, Security Groups, S3) using AWS CLI with comprehensive logging, error handling, and S3-backed tamper-resistant resource tracking.
+Automated Bash scripts for creating and managing AWS resources (EC2, Security Groups, S3) using AWS CLI with comprehensive logging, error handling, dry-run mode, and S3-backed tamper-resistant resource tracking.
+
+## ✨ Key Features
+
+- 🚀 **Automated Resource Creation**: EC2, S3, Security Groups with one command
+- 🔍 **Dry-Run Mode**: Preview changes before creating resources
+- 🔐 **S3-First State Management**: Primary state in S3 with local read-only cache
+- 🎯 **Session-Based Tracking**: Safe cleanup with unique session identifiers
+- 📊 **Comprehensive Logging**: Structured logs with aligned formatting
+- 🛡️ **Safety Mechanisms**: Two-level filtering prevents accidental deletions
+- 🏗️ **Modular Architecture**: Clean separation of utility and state functions
 
 ## 📁 Project Structure
 
 ```
 automate_script/
-├── common_functions.sh        # Shared utility functions + S3-first tracking system
-├── create_ec2.sh              # EC2 instance automation
-├── create_security_group.sh   # Security group automation
-├── create_s3_bucket.sh        # S3 bucket automation
-├── cleanup_resources.sh       # Resource cleanup automation
-├── .script_session_id         # Auto-generated session identifier (gitignored)
-├── .resource_tracking.json    # Read-only local tracking cache (synced from S3)
-├── logs/                      # Execution logs
-└── screenshots/               # Execution screenshots
+├── common_functions.sh          # Utility functions (logging, formatting, AWS validation)
+├── state_functions.sh           # S3-first state management system
+├── create_ec2.sh               # EC2 instance automation (with --dry-run)
+├── create_security_group.sh    # Security group automation
+├── create_s3_bucket.sh         # S3 bucket automation (with --dry-run)
+├── cleanup_resources.sh        # Resource cleanup automation (with --dry-run)
+├── .resource_state.json        # State file with session + resources (read-only)
+├── logs/                       # Execution logs with timestamps
+└── screenshots/                # Execution screenshots
 ```
 
 ## 🚀 Quick Setup
@@ -45,121 +55,281 @@ chmod +x *.sh
 ## 📖 Scripts Overview
 
 ### 🔧 common_functions.sh
-Shared utility functions including:
-- **S3-First Tracking System**: Primary tracking data stored in S3 bucket (`automation_state_file-<ACCOUNT_ID>`) with versioning and encryption
-- **Read-Only Local Cache**: Local `.resource_tracking.json` file (chmod 444) synced from S3, refreshes automatically when >5 minutes old
-- **Session Management**: Unique session IDs for resource isolation
-- **Logging & Error Handling**: Comprehensive logging with timestamps
-- **AWS Validation**: Region selection and credential verification
+Central utility functions including:
+- **Logging**: Structured logs with aligned columns and timestamps
+- **Output Formatting**: Color-coded console messages with symbols (✓, ✗, ⚠)
+- **AWS Validation**: Credential verification and region selection
+- **Error Handling**: Graceful error management with proper exit codes
+- **Sources**: state_functions.sh for state management
 
-**Tracking Architecture:**
-- S3 bucket is the source of truth (versioned, encrypted, per-account isolation)
-- Local file is read-only backup that auto-syncs from S3
-- Prevents local tampering - any changes overwritten by S3 sync
-- Timestamped backups stored in S3 for audit trail
+### 🗄️ state_functions.sh
+S3-first state management system:
+- **Primary Storage**: S3 bucket `automation-state-file-<ACCOUNT_ID>`
+  - Versioning enabled for change history
+  - AES256 encryption at rest
+  - Public access blocked
+  - Per-account isolation
+- **Local Cache**: `.resource_state.json` (chmod 444, read-only)
+  - Auto-syncs from S3 when >5 minutes old
+  - Prevents tampering - overwrites local changes with S3 data
+- **Session Management**: Automatic session ID generation and tracking
+- **State Structure**:
+  ```json
+  {
+    "version": "1.0",
+    "current_session": "automation-20260115-103000-12345",
+    "sessions": {
+      "automation-20260115-103000-12345": {
+        "created_at": "2026-01-15T10:30:00Z",
+        "resources": {
+          "ec2_instance": [...],
+          "s3_bucket": [...],
+          "key_pair": [...],
+          "security_group": [...]
+        }
+      }
+    }
+  }
+  ```
 
 ### 🖥️ create_ec2.sh
-Creates EC2 instance with key pair, tags it with `Project=AutomationLab` and unique `ScriptManaged` session ID, saves to tracking system (S3 + local), outputs instance ID, public IP, and SSH connection command.
+Creates EC2 instance with automatic tracking and tagging.
 
+**Usage:**
 ```bash
+# Dry-run (preview without creating)
+./create_ec2.sh --dry-run
+
+# Create resources
 ./create_ec2.sh
-# Output: Instance ID, Public IP, SSH command
-# Tracking: Saved to S3 and synced to local read-only file
 ```
+
+**Features:**
+- Automatically selects latest Amazon Linux 2023 AMI
+- Creates EC2 key pair and saves locally (chmod 400)
+- Launches t3.micro instance with proper tags
+- Tags: `Project=AutomationLab`, `ScriptManaged=<session_id>`
+- Saves to state file and uploads to S3
+- Outputs: Instance ID, Public IP, SSH command
 
 ![EC2 Instance Creation](screenshots/EC2_shot.png)
 
 ### 🔐 create_security_group.sh
-Creates security group with SSH (port 22) and HTTP (port 80) access, saves to tracking system, displays security group ID and rules.
+Creates security group with SSH and HTTP access.
 
+**Usage:**
 ```bash
 ./create_security_group.sh
-# Output: Security Group ID, configured rules
-# Tracking: Saved to S3 and synced to local read-only file
 ```
+
+**Features:**
+- Creates security group in default VPC
+- Adds ingress rules: SSH (port 22), HTTP (port 80)
+- Tags with session ID for safe cleanup
+- Tracks in state file and S3
 
 ![Security Group Creation](screenshots/Sec_group_shot.png)
 
 ### 🪣 create_s3_bucket.sh
-Creates uniquely named S3 bucket with versioning enabled, uploads `welcome.txt`, saves to tracking system, and generates pre-signed URL.
+Creates S3 bucket with versioning and encryption.
 
+**Usage:**
 ```bash
+# Dry-run (preview without creating)
+./create_s3_bucket.sh --dry-run
+
+# Create bucket
 ./create_s3_bucket.sh
-# Output: Bucket name, versioning status, pre-signed URL
-# Tracking: Saved to S3 tracking bucket and synced to local read-only file
 ```
+
+**Features:**
+- Generates unique bucket name with timestamp
+- Enables versioning and encryption
+- Uploads sample file (welcome.txt)
+- Applies lifecycle policies
+- Tags with session ID
+- Tracks in state file and S3
 
 ![S3 Bucket Creation](screenshots/S3_Bucket.png)
 
 ### 🧹 cleanup_resources.sh
-Safely deletes resources using two-level filtering (`Project=AutomationLab` + `ScriptManaged` session ID). Only deletes script-created resources, protecting manual/developer resources. 
+Safely deletes all script-created resources.
+
+**Usage:**
+```bash
+# Dry-run (preview what would be deleted)
+./cleanup_resources.sh --dry-run
+
+# Delete resources
+./cleanup_resources.sh
+```
 
 **Cleanup Process:**
-1. Syncs latest tracking data from S3
-2. Terminates EC2 instances and deletes key pairs
-3. Removes security groups
-4. Empties and deletes S3 buckets created by scripts
-5. **Deletes tracking S3 bucket** (after all resources cleaned)
-6. Removes local read-only tracking file
-7. Cleans up local files (.pem keys, welcome.txt)
+1. Syncs latest state from S3
+2. Loads session ID from state file
+3. Shows confirmation prompt with resource list
+4. Terminates EC2 instances (waits for termination)
+5. Deletes key pairs (+ local .pem files)
+6. Removes security groups
+7. Empties and deletes S3 buckets
+8. Deletes state S3 bucket
+9. Removes local state file
+10. Cleans local files (.pem keys, welcome.txt)
 
-```bash
-./cleanup_resources.sh
-# Warning: Permanently deletes resources and tracking infrastructure!
-```
+**Safety Features:**
+- Two-level filtering: `Project=AutomationLab` + `ScriptManaged=<session_id>`
+- Confirmation prompt (type 'yes' to proceed)
+- Only deletes script-managed resources
+- Manual resources remain untouched
+- Dry-run mode to preview deletions
 
 ![Cleanup Resources](screenshots/Clean_resources%20.png.png)
 
-## 📝 Usage
+## 📝 Usage Examples
+
+### Basic Workflow
 
 ```bash
-# Create resources (automatically tracked in S3 + local)
-./create_security_group.sh
-./create_s3_bucket.sh
+# 1. Preview EC2 creation (dry-run)
+./create_ec2.sh --dry-run
+
+# 2. Create EC2 instance
 ./create_ec2.sh
 
-# View tracked resources (syncs from S3)
-cat .resource_tracking.json
+# 3. Create S3 bucket (with dry-run first)
+./create_s3_bucket.sh --dry-run
+./create_s3_bucket.sh
 
-# Cleanup when done (removes everything including tracking infrastructure)
+# 4. Create security group
+./create_security_group.sh
+
+# 5. View current state
+cat .resource_state.json | jq .
+
+# 6. Preview cleanup (dry-run)
+./cleanup_resources.sh --dry-run
+
+# 7. Cleanup everything
 ./cleanup_resources.sh
+```
+
+### Advanced Usage
+
+```bash
+# Check current session
+jq -r '.current_session' .resource_state.json
+
+# List all resources for current session
+jq '.sessions[.current_session].resources' .resource_state.json
+
+# Start fresh session (delete state file, next run creates new session)
+rm .resource_state.json
+./create_ec2.sh
+
+# Multi-region cleanup
+./cleanup_resources.sh  # Select "All regions" option
 ```
 
 ## 🔒 Resource Tracking & Safety
 
-**S3-First Tracking System:**
-- **Primary Source**: S3 bucket `script-tracking-backup-<ACCOUNT_ID>`
-  - Versioning enabled for audit trail
-  - AES256 encryption at rest
-  - Public access blocked
-  - Per-account isolation
-- **Local Cache**: `.resource_tracking.json` (read-only, chmod 444)
-  - Auto-syncs from S3 every 5 minutes
-  - Prevents tampering - any local changes overwritten by S3
-  - Format: JSON with session IDs and resource details
+### Session Management
 
-**Session Management:** 
-- Scripts automatically track resources using `.script_session_id` file
-- Each session has unique ID (format: `automation-YYYYMMDD-HHMMSS-RANDOM`)
-- Cleanup only deletes resources with matching session ID tag
-- Protects manual/developer resources from accidental deletion
-- Delete `.script_session_id` to start a fresh session
+**Automatic Session Creation:**
+- Session ID generated on first run: `automation-YYYYMMDD-HHMMSS-PID`
+- Stored in `.resource_state.json` under `current_session` field
+- All subsequent runs reuse same session until cleanup
+- New session created after cleanup completes
 
-**Safety Features:**
-- Two-level filtering: `Project=AutomationLab` + `ScriptManaged=<session_id>`
-- Confirmation prompt before destructive operations
-- Manual resources without script tags are never deleted
-- Complete audit trail via S3 versioning and timestamped backups
+**Session Lifecycle:**
+```
+Run 1: create_ec2.sh
+  └─> No state file → Create session: automation-20260115-103000-12345
+
+Run 2: create_s3_bucket.sh  
+  └─> State exists → Reuse session: automation-20260115-103000-12345
+
+Run 3: cleanup_resources.sh
+  └─> Delete all resources + state file
+
+Run 4: create_ec2.sh
+  └─> No state file → Create NEW session: automation-20260116-090000-67890
+```
+
+### State File Structure
+
+**Single Source of Truth:**
+- Primary: S3 bucket `automation-state-file-<ACCOUNT_ID>/state.json`
+- Cache: Local `.resource_state.json` (chmod 444, read-only)
+- Format: JSON with session tracking
+
+### Safety Features
+
+**Two-Level Filtering:**
+1. **Level 1**: `Project=AutomationLab` tag
+2. **Level 2**: `ScriptManaged=<session_id>` tag
+
+**Protection:**
+- Manual resources (no ScriptManaged tag) → Never deleted
+- Other sessions (different session ID) → Never deleted
+- Only YOUR session resources → Deleted
+
+**Dry-Run Mode:**
+```bash
+# Preview what would be created
+./create_ec2.sh --dry-run
+./create_s3_bucket.sh --dry-run
+
+# Preview what would be deleted
+./cleanup_resources.sh --dry-run
+```
+
+### Development/Testing
+```bash
+# Quick environment setup
+./create_ec2.sh
+./create_s3_bucket.sh
+
+# Test application
+# ...
+
+# Clean up costs
+./cleanup_resources.sh
+```
+
+### CI/CD Integration
+```bash
+# Preview in pipeline
+./create_ec2.sh --dry-run
+
+# Create test environment
+./create_ec2.sh
+./create_s3_bucket.sh
+
+# Run tests
+# ...
+
+# Auto-cleanup
+./cleanup_resources.sh
+```
+
+### Learning/Demonstration
+```bash
+# Show students what would be created
+./create_ec2.sh --dry-run
+
+# Create actual resources
+./create_ec2.sh
+
+# Demonstrate state tracking
+cat .resource_state.json | jq .
+
+# Safe cleanup
+./cleanup_resources.sh
+```
+
+## 📚 Additional Resources
 
 **Screenshots:** See [screenshots/](screenshots/) directory for execution examples
 
 **Logs:** All executions logged to `./logs/` directory with timestamps
 
-## 🛠️ Troubleshooting
-
-- **Permission Denied:** Run `chmod +x *.sh`
-- **AWS Credentials:** Run `aws configure` and verify with `aws sts get-caller-identity`
-- **Resource Failures:** Check IAM permissions, AWS quotas, and logs in `./logs/`
-- **Region Issues:** Ensure AMI availability in selected region
-- **Tracking Sync Issues:** Check S3 bucket permissions and network connectivity
-- **Read-Only File Errors:** Tracking file is intentionally read-only (chmod 444) - modifications only via scripts

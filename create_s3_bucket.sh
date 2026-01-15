@@ -2,9 +2,6 @@
 
 # Script: create_s3_bucket.sh
 # Purpose: Create S3 bucket with versioning and logging
-# Author: DevOps Automation Lab
-# Date: December 2025
-# Usage: ./create_s3_bucket.sh [--dry-run]
 
 set -euo pipefail
 
@@ -42,6 +39,11 @@ fi
 verify_credentials() {
     log "INFO" "Verifying AWS credentials"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Skipping AWS credential verification"
+        return 0
+    fi
+    
     if ! aws sts get-caller-identity --region "$REGION" &>> "$LOG_FILE"; then
         print_error "AWS credentials are not configured properly"
     fi
@@ -52,6 +54,12 @@ verify_credentials() {
 # Create sample file
 create_sample_file() {
     log "INFO" "Creating sample file: $SAMPLE_FILE"
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would create sample file: $SAMPLE_FILE"
+        print_info "  [DRY-RUN] Content: Welcome message with bucket details"
+        return 0
+    fi
     
     cat > "$SAMPLE_FILE" << EOF
 Welcome to DevOps Automation Lab!
@@ -166,6 +174,11 @@ enable_versioning() {
 apply_bucket_policy() {
     log "INFO" "Applying bucket policy"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would apply bucket policy (AllowPublicRead)"
+        return 0
+    fi
+    
     local bucket_policy=$(cat <<EOF
 {
   "Version": "2012-10-17",
@@ -196,6 +209,11 @@ EOF
 upload_file() {
     log "INFO" "Uploading sample file to bucket"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would upload: $SAMPLE_FILE to s3://$BUCKET_NAME/"
+        return 0
+    fi
+    
     if aws s3 cp "$SAMPLE_FILE" "s3://$BUCKET_NAME/$SAMPLE_FILE" \
         --region "$REGION" &>> "$LOG_FILE"; then
         print_success "File uploaded: $SAMPLE_FILE"
@@ -207,6 +225,12 @@ upload_file() {
 # Get bucket details
 get_bucket_details() {
     log "INFO" "Retrieving bucket details"
+    
+    if [ "$DRY_RUN" = true ]; then
+        VERSIONING_STATUS="Enabled"
+        print_info "  [DRY-RUN] Would retrieve bucket details"
+        return 0
+    fi
     
     VERSIONING_STATUS=$(aws s3api get-bucket-versioning \
         --bucket "$BUCKET_NAME" \
@@ -220,6 +244,11 @@ get_bucket_details() {
 # List bucket contents
 list_bucket_contents() {
     log "INFO" "Listing bucket contents"
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would list bucket contents"
+        return 0
+    fi
     
     echo ""
     echo "Current bucket contents:" | tee -a "$LOG_FILE"
