@@ -73,7 +73,7 @@ create_security_group() {
     fi
     
     # Save to JSON tracking file
-    save_resource_to_tracking "security_group" "$SG_ID" "$SG_NAME" "$REGION"
+    save_resource_to_state "security_group" "$SG_ID" "$SG_NAME" "$REGION"
     
     print_success "Security group created: $SG_ID"
 }

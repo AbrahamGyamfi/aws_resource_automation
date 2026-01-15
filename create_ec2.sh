@@ -4,6 +4,7 @@
 # Purpose: Automate EC2 instance creation with logging and user input
 # Author: DevOps Automation Lab
 # Date: December 2025
+# Usage: ./create_ec2.sh [--dry-run]
 
 set -euo pipefail
 
@@ -24,6 +25,14 @@ KEY_NAME="devops-keypair-$(date +%s)"
 INSTANCE_NAME="AutomationLab-EC2"
 SCRIPT_ID_FILE=".script_session_id"
 SCRIPT_SESSION_ID=""
+DRY_RUN=false
+
+# Parse command line arguments
+if [ "${1:-}" == "--dry-run" ]; then
+    DRY_RUN=true
+    print_info "🔍 DRY-RUN MODE: No resources will be created"
+    log "INFO" "Script started in dry-run mode"
+fi
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -66,6 +75,14 @@ verify_credentials() {
 create_key_pair() {
     log "INFO" "Creating EC2 key pair: $KEY_NAME"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would create key pair: $KEY_NAME"
+        print_info "  [DRY-RUN] Would save to file: ${KEY_NAME}.pem"
+        print_info "  [DRY-RUN] Would set permissions: chmod 400"
+        print_info "  [DRY-RUN] Would track in state file"
+        return 0
+    fi
+    
     aws ec2 create-key-pair \
         --key-name "$KEY_NAME" \
         --region "$REGION" \
@@ -75,7 +92,7 @@ create_key_pair() {
     chmod 400 "${KEY_NAME}.pem"
     
     # Save to JSON tracking file
-    save_resource_to_tracking "key_pair" "$KEY_NAME" "$KEY_NAME" "$REGION"
+    save_resource_to_state "key_pair" "$KEY_NAME" "$KEY_NAME" "$REGION"
     
     print_success "Key pair created: ${KEY_NAME}.pem"
 }
@@ -114,6 +131,21 @@ get_security_group() {
 launch_instance() {
     log "INFO" "Launching EC2 instance ($INSTANCE_TYPE)"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would launch EC2 instance with:"
+        print_info "    - AMI: $AMI_ID"
+        print_info "    - Instance Type: $INSTANCE_TYPE"
+        print_info "    - Key Name: $KEY_NAME"
+        print_info "    - Security Group: $SECURITY_GROUP"
+        print_info "    - Region: $REGION"
+        print_info "    - Name: $INSTANCE_NAME"
+        print_info "    - Tags: Project=AutomationLab, Environment=Development"
+        print_info "    - ScriptManaged: $SCRIPT_SESSION_ID"
+        print_info "  [DRY-RUN] Would track instance ID in state file"
+        INSTANCE_ID="i-dry-run-12345678"
+        return 0
+    fi
+    
     INSTANCE_ID=$(aws ec2 run-instances \
         --image-id "$AMI_ID" \
         --instance-type "$INSTANCE_TYPE" \
@@ -129,7 +161,7 @@ launch_instance() {
     fi
     
     # Save to JSON tracking file
-    save_resource_to_tracking "ec2_instance" "$INSTANCE_ID" "$INSTANCE_NAME" "$REGION"
+    save_resource_to_state "ec2_instance" "$INSTANCE_ID" "$INSTANCE_NAME" "$REGION"
     
     print_success "Instance launched: $INSTANCE_ID"
 }
@@ -137,6 +169,12 @@ launch_instance() {
 # Wait for instance to be running
 wait_for_instance() {
     log "INFO" "Waiting for instance to enter running state"
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would wait for instance to be running (normally 30-60 seconds)"
+        return 0
+    fi
+    
     print_info "⏳ This may take 30-60 seconds..."
     
     if ! aws ec2 wait instance-running \
@@ -151,6 +189,13 @@ wait_for_instance() {
 # Get instance details
 get_instance_details() {
     log "INFO" "Retrieving instance details"
+    
+    if [ "$DRY_RUN" = true ]; then
+        PUBLIC_IP="203.0.113.1"
+        PRIVATE_IP="10.0.1.100"
+        print_info "  [DRY-RUN] Would retrieve instance details"
+        return 0
+    fi
     
     PUBLIC_IP=$(aws ec2 describe-instances \
         --instance-ids "$INSTANCE_ID" \
@@ -169,9 +214,28 @@ get_instance_details() {
 
 # Display results
 display_results() {
-    print_header "EC2 Instance Created Successfully!"
-    
-    cat <<EOF | tee -a "$LOG_FILE"
+    if [ "$DRY_RUN" = true ]; then
+        print_header "DRY-RUN Summary - No Resources Created"
+        cat <<EOF
+Instance ID:     $INSTANCE_ID (simulated)
+Instance Type:   $INSTANCE_TYPE
+Region:          $REGION
+AMI ID:          $AMI_ID
+Public IP:       $PUBLIC_IP (simulated)
+Private IP:      $PRIVATE_IP (simulated)
+Key Pair:        ${KEY_NAME}.pem (not created)
+VPC ID:          $VPC_ID
+==========================================
+
+🔍 This was a DRY-RUN. No actual resources were created.
+To create resources, run without --dry-run flag:
+  ./create_ec2.sh
+
+Log file saved to: $LOG_FILE
+EOF
+    else
+        print_header "EC2 Instance Created Successfully!"
+        cat <<EOF | tee -a "$LOG_FILE"
 Instance ID:     $INSTANCE_ID
 Instance Type:   $INSTANCE_TYPE
 Region:          $REGION
@@ -187,6 +251,7 @@ To connect via SSH, use:
 
 Log file saved to: $LOG_FILE
 EOF
+    fi
 }
 
 # Cleanup on error

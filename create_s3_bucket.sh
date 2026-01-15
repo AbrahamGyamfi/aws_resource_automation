@@ -4,6 +4,7 @@
 # Purpose: Create S3 bucket with versioning and logging
 # Author: DevOps Automation Lab
 # Date: December 2025
+# Usage: ./create_s3_bucket.sh [--dry-run]
 
 set -euo pipefail
 
@@ -23,6 +24,14 @@ BUCKET_NAME="devops-automation-lab-$(date +%s)-$RANDOM"
 SAMPLE_FILE="welcome.txt"
 SCRIPT_ID_FILE=".script_session_id"
 SCRIPT_SESSION_ID=""
+DRY_RUN=false
+
+# Parse command line arguments
+if [ "${1:-}" == "--dry-run" ]; then
+    DRY_RUN=true
+    print_info "🔍 DRY-RUN MODE: No resources will be created"
+    log "INFO" "Script started in dry-run mode"
+fi
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -72,6 +81,16 @@ EOF
 create_bucket() {
     log "INFO" "Creating S3 bucket: $BUCKET_NAME"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would create S3 bucket: $BUCKET_NAME"
+        print_info "  [DRY-RUN] Region: $REGION"
+        if [ "$REGION" != "us-east-1" ]; then
+            print_info "  [DRY-RUN] Would set LocationConstraint: $REGION"
+        fi
+        print_info "  [DRY-RUN] Would track in state file"
+        return 0
+    fi
+    
     # us-east-1 doesn't need LocationConstraint
     if [ "$REGION" == "us-east-1" ]; then
         aws s3api create-bucket \
@@ -86,7 +105,7 @@ create_bucket() {
     
     if [ $? -eq 0 ]; then
         # Save to JSON tracking file
-        save_resource_to_tracking "s3_bucket" "$BUCKET_NAME" "$BUCKET_NAME" "$REGION"
+        save_resource_to_state "s3_bucket" "$BUCKET_NAME" "$BUCKET_NAME" "$REGION"
         
         print_success "Bucket created: $BUCKET_NAME"
     else
@@ -97,6 +116,16 @@ create_bucket() {
 # Tag bucket
 tag_bucket() {
     log "INFO" "Adding tags to bucket"
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would add tags:"
+        print_info "    - Project: AutomationLab"
+        print_info "    - Environment: Development"
+        print_info "    - ManagedBy: BashScript"
+        print_info "    - ScriptManaged: $SCRIPT_SESSION_ID"
+        print_info "    - CreatedBy: $USER"
+        return 0
+    fi
     
     aws s3api put-bucket-tagging \
         --bucket "$BUCKET_NAME" \
@@ -115,6 +144,11 @@ tag_bucket() {
 # Enable versioning
 enable_versioning() {
     log "INFO" "Enabling versioning on bucket"
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would enable versioning on bucket"
+        return 0
+    fi
     
     aws s3api put-bucket-versioning \
         --bucket "$BUCKET_NAME" \
@@ -194,9 +228,25 @@ list_bucket_contents() {
 
 # Display results
 display_results() {
-    print_header "S3 Bucket Created Successfully!"
-    
-    cat <<EOF | tee -a "$LOG_FILE"
+    if [ "$DRY_RUN" = true ]; then
+        print_header "DRY-RUN Summary - No Resources Created"
+        cat <<EOF
+Bucket Name:        $BUCKET_NAME (not created)
+Region:             $REGION
+Versioning Status:  Enabled (would be configured)
+Sample File:        $SAMPLE_FILE (not uploaded)
+Bucket ARN:         arn:aws:s3:::$BUCKET_NAME (simulated)
+==========================================
+
+🔍 This was a DRY-RUN. No actual resources were created.
+To create resources, run without --dry-run flag:
+  ./create_s3_bucket.sh
+
+Log file saved to: $LOG_FILE
+EOF
+    else
+        print_header "S3 Bucket Created Successfully!"
+        cat <<EOF | tee -a "$LOG_FILE"
 Bucket Name:        $BUCKET_NAME
 Region:             $REGION
 Versioning Status:  $VERSIONING_STATUS
@@ -215,6 +265,7 @@ To access via console:
 
 Log file saved to: $LOG_FILE
 EOF
+    fi
 }
 
 # Cleanup on error

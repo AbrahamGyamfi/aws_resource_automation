@@ -5,6 +5,7 @@
 # Purpose: Clean up all AWS resources with logging and safety checks
 # Author: DevOps Automation Lab
 # Date: December 2025
+# Usage: ./cleanup_resources.sh [--dry-run]
 
 set -euo pipefail
 
@@ -21,8 +22,15 @@ SCRIPT_NAME="cleanup_resources.sh"
 LOG_DIR="./logs"
 LOG_FILE="${LOG_DIR}/cleanup_$(date +%Y%m%d_%H%M%S).log"
 PROJECT_TAG="AutomationLab"
-SCRIPT_ID_FILE=".script_session_id"
 SCRIPT_MANAGED_TAG="ScriptManaged"
+DRY_RUN=false
+
+# Parse command line arguments
+if [ "${1:-}" == "--dry-run" ]; then
+    DRY_RUN=true
+    print_info "🔍 DRY-RUN MODE: No resources will be deleted"
+    log "INFO" "Cleanup script started in dry-run mode"
+fi
 
 # ===========================
 # SCRIPT-SPECIFIC FUNCTIONS
@@ -161,6 +169,12 @@ terminate_instances() {
     
     print_info "  Found instances in $region: $instance_ids"
     
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would terminate instances: $instance_ids"
+        print_info "  [DRY-RUN] Would wait for termination to complete"
+        return 0
+    fi
+    
     if aws ec2 terminate-instances \
         --instance-ids $instance_ids \
         --region "$region" >> "$LOG_FILE" 2>&1; then
@@ -182,10 +196,10 @@ delete_key_pairs() {
     
     log "INFO" "Checking for key pairs in $region"
     
-    # Try to get key pairs from tracking file first
+    # Try to get key pairs from state file first
     local tracked_keys=""
-    if [ -f "$TRACKING_FILE" ] && [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
-        tracked_keys=$(get_resources_from_tracking "$SCRIPT_SESSION_ID" "key_pair" 2>/dev/null || echo "")
+    if [ -f "$STATE_FILE" ] && [ "$SCRIPT_SESSION_ID" != "ALL" ]; then
+        tracked_keys=$(get_resources_from_state "$SCRIPT_SESSION_ID" "key_pair" 2>/dev/null || echo "")
     fi
     
     # Also query AWS for key pairs
@@ -203,6 +217,14 @@ delete_key_pairs() {
     fi
     
     for key in $key_pairs; do
+        if [ "$DRY_RUN" = true ]; then
+            print_info "  [DRY-RUN] Would delete key pair: $key"
+            if [ -f "${key}.pem" ]; then
+                print_info "  [DRY-RUN] Would remove local file: ${key}.pem"
+            fi
+            continue
+        fi
+        
         if aws ec2 delete-key-pair \
             --key-name "$key" \
             --region "$region" 2>> "$LOG_FILE"; then
@@ -246,6 +268,11 @@ delete_security_groups() {
     fi
     
     for sg_id in $sg_ids; do
+        if [ "$DRY_RUN" = true ]; then
+            print_info "  [DRY-RUN] Would delete security group: $sg_id"
+            continue
+        fi
+        
         if aws ec2 delete-security-group \
             --group-id "$sg_id" \
             --region "$region" 2>> "$LOG_FILE"; then
@@ -303,6 +330,12 @@ delete_s3_buckets() {
         fi
         
         if [ -n "$has_project_tag" ] && [ "$is_script_managed" == "true" ]; then
+            if [ "$DRY_RUN" = true ]; then
+                print_info "  [DRY-RUN] Would empty and delete bucket: $bucket"
+                print_info "  [DRY-RUN] Would delete all object versions and delete markers"
+                continue
+            fi
+            
             print_info "  Emptying bucket: $bucket"
             
             # Delete all versions
@@ -362,7 +395,18 @@ cleanup_tracking_infrastructure() {
         return
     fi
     
-    local tracking_bucket="script-tracking-backup-${account_id}"
+    local tracking_bucket="automation-state-file-${account_id}"
+    
+    # Dry-run check
+    if [ "$DRY_RUN" = true ]; then
+        print_info "  [DRY-RUN] Would empty tracking bucket: $tracking_bucket"
+        print_info "  [DRY-RUN] Would delete all versions and delete markers"
+        print_info "  [DRY-RUN] Would delete tracking bucket: $tracking_bucket"
+        if [ -f "$STATE_FILE" ]; then
+            print_info "  [DRY-RUN] Would remove local state file: $STATE_FILE"
+        fi
+        return 0
+    fi
     
     # Check if tracking bucket exists
     if aws s3api head-bucket --bucket "$tracking_bucket" 2>> "$LOG_FILE"; then
@@ -413,17 +457,38 @@ cleanup_tracking_infrastructure() {
         print_info "  Tracking bucket does not exist"
     fi
     
-    # Remove local tracking file (need to change permissions first)
-    if [ -f "$TRACKING_FILE" ]; then
-        chmod 644 "$TRACKING_FILE" 2>> "$LOG_FILE" || true
-        rm -f "$TRACKING_FILE"
-        print_success "  Removed local tracking file: $TRACKING_FILE"
+    # Remove local state file (need to change permissions first)
+    if [ -f "$STATE_FILE" ]; then
+        chmod 644 "$STATE_FILE" 2>> "$LOG_FILE" || true
+        rm -f "$STATE_FILE"
+        print_success "  Removed local state file: $STATE_FILE"
     fi
 }
 
 # Clean up local files
 cleanup_local_files() {
     log "INFO" "Cleaning up local files"
+    
+    # Dry-run check
+    if [ "$DRY_RUN" = true ]; then
+        local would_delete=0
+        if [ -f "welcome.txt" ]; then
+            print_info "  [DRY-RUN] Would remove welcome.txt"
+            ((would_delete++))
+        fi
+        for pem_file in devops-keypair-*.pem; do
+            if [ -f "$pem_file" ]; then
+                print_info "  [DRY-RUN] Would remove $pem_file"
+                ((would_delete++))
+            fi
+        done
+        if [ $would_delete -eq 0 ]; then
+            print_info "  [DRY-RUN] No local files to clean"
+        else
+            print_info "  [DRY-RUN] Would clean up $would_delete local file(s)"
+        fi
+        return 0
+    fi
     
     local files_deleted=0
     
@@ -454,7 +519,25 @@ cleanup_local_files() {
 display_summary() {
     print_header "Cleanup Complete!"
     
-    cat <<EOF | tee -a "$LOG_FILE"
+    if [ "$DRY_RUN" = true ]; then
+        cat <<EOF | tee -a "$LOG_FILE"
+DRY-RUN Summary - No resources were actually deleted:
+  • EC2 instances would be terminated
+  • Key pairs would be deleted
+  • Security groups would be removed
+  • S3 buckets would be emptied and deleted
+  • Tracking infrastructure would be cleaned (S3 bucket and local file)
+  • Local files would be cleaned up
+
+Region(s): $REGION
+Project tag: $PROJECT_TAG
+
+To perform actual cleanup, run without --dry-run flag
+Log file saved to: $LOG_FILE
+==========================================
+EOF
+    else
+        cat <<EOF | tee -a "$LOG_FILE"
 Summary of cleanup actions:
   ✓ EC2 instances terminated
   ✓ Key pairs deleted
@@ -469,6 +552,7 @@ Project tag: $PROJECT_TAG
 Log file saved to: $LOG_FILE
 ==========================================
 EOF
+    fi
 }
 
 # ===========================
